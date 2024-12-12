@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spaceship Arcade Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        .ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+        }
+        
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            text-align: center;
+        }
+        
+        .game-over button {
+            margin-top: 10px;
+            padding: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="ui" id="ui">
+        Lives: <span id="lives">3</span> | Score: <span id="score">0</span>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="game-over" id="gameOver" style="display: none;">
+        <p>Game Over!</p>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <button onclick="restartGame()">Restart</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const stars = [];
+        const numStars = 200;
+
+        // Create stars for the background
+        for (let i = 0; i < numStars; i++) {
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                radius: Math.random() * 2,
+                speed: Math.random() * 0.5 + 0.2,
+            });
+        }
+
+        function drawBackground() {
+            ctx.fillStyle = '#11151E';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            stars.forEach((star) => {
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'white';
+                ctx.fill();
+
+                // Move the star
+                star.y += star.speed;
+
+                // Reset star position if it goes off the screen
+                if (star.y > canvas.height) {
+                    star.y = 0;
+                    star.x = Math.random() * canvas.width;
+                }
+            });
+        }
+
+        const ship = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            width: 20,
+            height: 30,
+            speed: 7,
+            dx: 0,
+            dy: 0,
+            lives: 3,
+        };
+
+        const keys = {};
+        const asteroids = [];
+        const lasers = [];
+        let score = 0;
+        let cooldown = 0;
+
+        function drawShip() {
+            ctx.save();
+            ctx.translate(ship.x, ship.y);
+
+            // Ship body
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.moveTo(0, -ship.height / 2);
+            ctx.lineTo(-ship.width / 2, ship.height / 2);
+            ctx.lineTo(ship.width / 2, ship.height / 2);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function createAsteroid() {
+            const size = Math.random() * 50 + 20;
+            const speed = Math.random() * 3 + 1;
+            const angle = Math.random() * Math.PI * 2;
+
+            asteroids.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size,
+                speed,
+                angle,
+                dx: Math.cos(angle) * speed,
+                dy: Math.sin(angle) * speed,
+            });
+        }
+
+        function drawAsteroids() {
+            asteroids.forEach((asteroid) => {
+                ctx.save();
+                ctx.translate(asteroid.x, asteroid.y);
+
+                ctx.fillStyle = '#7D7D7B';
+                ctx.strokeStyle = '#7D7D7B';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, asteroid.size / 2, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.restore();
+            });
+        }
+
+        function updateAsteroids() {
+            asteroids.forEach((asteroid, index) => {
+                asteroid.x += asteroid.dx;
+                asteroid.y += asteroid.dy;
+
+                if (asteroid.x < 0) asteroid.x = canvas.width;
+                if (asteroid.x > canvas.width) asteroid.x = 0;
+                if (asteroid.y < 0) asteroid.y = canvas.height;
+                if (asteroid.y > canvas.height) asteroid.y = 0;
+
+
+                // Check collision with the ship
+                const shipBox = {
+                    x1: ship.x - ship.width / 2,
+                    y1: ship.y - ship.height / 2,
+                    x2: ship.x + ship.width / 2,
+                    y2: ship.y + ship.height / 2,
+                };
+
+
+                const asteroidBox = {
+                    x1: asteroid.x - asteroid.size / 2,
+                    y1: asteroid.y - asteroid.size / 2,
+                    x2: asteroid.x + asteroid.size / 2,
+                    y2: asteroid.y + asteroid.size / 2,
+                };
+
+                if (
+                    shipBox.x1 < asteroidBox.x2 &&
+                    shipBox.x2 > asteroidBox.x1 &&
+                    shipBox.y1 < asteroidBox.y2 &&
+                    shipBox.y2 > asteroidBox.y1
+                ) {
+                    endGame();
+                }
+
+
+            });
+        }
+
+        function shootLaser() {
+            if (cooldown <= 0) {
+                lasers.push({
+                    x: ship.x,
+                    y: ship.y,
+                    dx: 0,
+                    dy: -5,
+                });
+                cooldown = 4; // Cooldown period             
+            }
+        }
+
+
+        function drawLasers() {
+            lasers.forEach((laser) => {
+                ctx.fillStyle = 'red';
+                ctx.beginPath();
+                ctx.arc(laser.x, laser.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function updateLasers() {
+            lasers.forEach((laser, index) => {
+                laser.y += laser.dy * 2;
+
+                if (laser.y < 0) {
+                    lasers.splice(index, 1);
+                }
+
+                asteroids.forEach((asteroid, aIndex) => {
+                    const dist = Math.hypot(laser.x - asteroid.x, laser.y - asteroid.y);
+                    if (dist < asteroid.size / 2) {
+                        lasers.splice(index, 1);
+                        asteroids.splice(aIndex, 1);
+                        score += 10;
+                    }
+                });
+            });
+        }
+
+        function updateShip() {
+            if (keys['ArrowUp']) ship.dy = -ship.speed;
+            else if (keys['ArrowDown']) ship.dy = ship.speed;
+            else ship.dy = 0;
+
+            if (keys['ArrowLeft']) ship.dx = -ship.speed;
+            else if (keys['ArrowRight']) ship.dx = ship.speed;
+            else ship.dx = 0;
+
+            ship.x += ship.dx;
+            ship.y += ship.dy;
+
+            if (ship.x < 0) ship.x = canvas.width;
+            if (ship.x > canvas.width) ship.x = 0;
+            if (ship.y < 0) ship.y = canvas.height;
+            if (ship.y > canvas.height) ship.y = 0;
+        }
+
+        function endGame() {
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+            cancelAnimationFrame(loopId);
+        }
+
+        function restartGame() {
+            document.getElementById('gameOver').style.display = 'none';
+            ship.x = canvas.width / 2;
+            ship.y = canvas.height / 2;
+            score = 0;
+            document.getElementById('score').textContent = score;
+            asteroids.length = 0;
+            lasers.length = 0;
+            for (let i = 0; i < 5; i++) {
+                createAsteroid();
+            }
+            loop();
+        }
+
+
+
+
+
+
+
+
+        function update() {
+            drawBackground();
+
+            updateShip();
+            drawShip();
+            updateAsteroids();
+            drawAsteroids();
+
+            updateLasers();
+            drawLasers();
+
+
+            spawnAsteroids();
+
+            // Update cooldown
+            if (cooldown > 0) cooldown--;
+
+            // Update score
+            document.getElementById('score').textContent = score;
+
+            // Continue the game loop
+            requestAnimationFrame(update);
+        }
+
+
+        let asteroidSpawnTimer = 0; // Timer za generaciju novih asteroida
+
+        function spawnAsteroids() {
+            asteroidSpawnTimer++;
+            if (asteroidSpawnTimer > 100) { // Svakih 100 frame-ova generiše asteroid
+                createAsteroid();
+                asteroidSpawnTimer = 0; // Resetuje timer
+            }
+        }
+
+
+
+        function loop() {
+            update();
+        }
+
+        // Event listeners for keyboard input
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ') shootLaser(); // Shoot laser on spacebar
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Start the game
+        for (let i = 0; i < 5; i++) {
+            createAsteroid(); // Generate initial asteroids
+        }
+        loop(); // Start the main game loop
+    </script>
+</body>
+
+</html>
